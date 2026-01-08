@@ -2,278 +2,348 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>BLE RSSI リアルタイム受信 & ルート案内</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLE Dual RSSI Route Sync</title>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 20px; }
+    .main-layout { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 800px; }
+    .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .image-container { position: relative; width: 100%; background: #ddd; border-radius: 8px; overflow: hidden; line-height: 0; cursor: crosshair; }
+    img { width: 100%; height: auto; display: block; }
+    img[src=""] { display: none; }
+    .point { position: absolute; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; background: #007bff; pointer-events: none; }
+    .point.moving { background: #ff9500; width: 26px; height: 26px; z-index: 20; box-shadow: 0 0 12px rgba(255,149,0,0.9); }
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+    button { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; }
+    .btn-green { background: #28a745; } .btn-red { background: #dc3545; } .btn-blue { background: #007bff; } .btn-purple { background: #6f42c1; } .btn-gray { background: #6c757d; } .btn-orange { background: #fd7e14; }
+    button:disabled { background: #ccc; }
+    .rssi-display { font-family: monospace; font-size: 0.9em; background: #eee; padding: 4px 8px; border-radius: 4px; }
+  </style>
 </head>
 <body>
-  <h1>BLE RSSI スキャン & ルート案内</h1>
 
-  <button id="scan">スキャン開始</button>
-  <button id="stop" disabled>スキャン停止</button>
-  <button id="view" disabled>保存データを見る</button>
-  <button id="guide" disabled>案内開始</button>
-  <button id="guideStop" disabled>案内停止</button>
-  <button id="delete" disabled>データ削除</button>
+<div class="main-layout">
+  <div class="card">
+    <strong>地図の写真の読み込み</strong>
+    <input type="file" id="fileInput" accept="image/*" style="margin-top:10px; display:block;">
+    
+    <div class="row">
+      <button id="scan" class="btn-green">スキャン開始</button>
+      <button id="stop" class="btn-red" disabled>停止・保存</button>
+      <button id="guide" class="btn-blue" disabled>案内開始</button>
+      <button id="guideStop" class="btn-red" disabled>案内停止</button>
+      <button id="undoBtn" class="btn-orange" onclick="undoLastPoint()">1つ戻る</button>
+      <button id="resetBtn" class="btn-gray" onclick="resetAll()">リセット</button>
+    </div>
+    <div class="row">
+      <strong>進行度:</strong>
+      <span id="pVal" style="font-weight:bold; min-width:50px;">0.0%</span>
+      <span id="rssiA" class="rssi-display">A: --</span>
+      <span id="rssiB" class="rssi-display">B: --</span>
+    </div>
+  </div>
 
-  <pre id="output"></pre>
+  <div class="image-container" id="container">
+    <img id="img" src="">
+  </div>
 
-  <p id="rssi">RSSI: 未取得</p>
-  <p id="avg">平均RSSI: 未取得</p>
-  <p id="compare">ルート案内: 未取得</p>
+  <div class="card">
+    <strong>保存済みルート</strong>
+    <div id="historyList"></div>
+  </div>
+</div>
 
-  <div id="savedData" style="margin-top:20px; white-space: pre-wrap;"></div>
-
-  <script>
-    const maxSamples = 10;
-    let rssiArray = [];
-    let averageArray = [];
-    let routeData = [];
-    let scan;
-    let advertisementHandler;
+<script>
+  const BASE_URL = "https://test-server-757e.onrender.com";
+  const maxSamples = 20; // 平均化するサンプル数
   
-    const scanButton = document.getElementById('scan');
-    const stopButton = document.getElementById('stop');
-    const viewButton = document.getElementById('view');
-    const guideButton = document.getElementById('guide');
-    const guideStopButton = document.getElementById('guideStop');
-    const deleteButton = document.getElementById('delete');
+  // ビーコンのUUID（環境に合わせて書き換えてください）
+  const UUID_A = '12345678-1234-5678-1234-56789abcdef0'.toLowerCase();
+  const UUID_B = '12345678-1234-5678-1234-56789abcdef1'.toLowerCase();
 
-    function calculateAverage(array) {
-      const average = array.reduce((sum, val) => sum + val, 0) / array.length;
-      return average;
-    }
-  
-    function updateRouteGuide(average, routeData) {
-      if (!routeData?.route?.length) return;
-  
-      const route = routeData.route.map(Number);
+  let points = []; 
+  let routeData = []; // [{a: avgRSSI, b: avgRSSI}, ...]
+  let tempRSSI = { a: [], b: [] };
+  let scan, advertisementHandler;
+  let isConfirmed = false;
 
-      let closestIndex = 0;
-      let minDiff = Infinity;
-      for (let i = 0; i < route.length; i++) {
-        const diff = Math.abs(average - route[i]);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestIndex = i;
-        }
-      }
-  
-      const percent = ((closestIndex + 1) / route.length * 100).toFixed(0);
-      const nextHint = (closestIndex < route.length - 1)
-        ? (average < route[closestIndex + 1] ? '近づいています' : '遠ざかっています')
-        : 'ルートの終点です';
-  
-      document.getElementById('compare').innerText =
-        `現在位置はルートの ${percent}% \n` +
-        `次のRSSI: ${route[closestIndex + 1] || 'なし'}（${nextHint}）`;
-    }
+  const container = document.getElementById('container');
+  const img = document.getElementById('img');
 
-    function createAdvertisementHandler(targetArray, onAverageReady) {
-      return (event) => {
-        if (event.rssi !== undefined && event.rssi < 0) {
-          targetArray.push(event.rssi);
-          document.getElementById('rssi').innerText = `RSSI: ${event.rssi}`;
+  // --- 画像操作 ---
+  document.getElementById('fileInput').onchange = (e) => {
+    resetCanvas();
+    const reader = new FileReader();
+    reader.onload = (ev) => { img.src = ev.target.result; };
+    reader.readAsDataURL(e.target.files[0]);
+  };
 
-          if (targetArray.length % maxSamples === 0) {
-            const recent = targetArray.slice(-maxSamples);
-            const avg = calculateAverage(recent);
-            document.getElementById('avg').innerText = `平均RSSI: ${avg.toFixed(2)}`;
+  container.onclick = (e) => {
+    if (!img.src || isConfirmed) return;
+    const rect = container.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width * 100;
+    const y = (e.clientY - rect.top) / rect.height * 100;
+    points.push({x, y});
+    drawPointUI(x, y, points.length);
+  };
 
-            if (onAverageReady) {
-              onAverageReady(avg);
-            }
-          }
-        }
-      };
-    }
+  function drawPointUI(x, y, label) {
+    const p = document.createElement('div');
+    p.className = 'point';
+    p.setAttribute('data-index', label);
+    p.style.left = x+'%'; p.style.top = y+'%'; p.innerText = label;
+    container.appendChild(p);
+  }
 
-    async function startBluetoothScan() {
-      const options = {
-        filters: [{ services: ['12345678-1234-5678-1234-56789abcdef0'] }],
-        // acceptAllAdvertisements: true,
-        keepRepeatedDevices: true
+  function undoLastPoint() {
+    if (isConfirmed || points.length === 0) return;
+    const lastPin = container.querySelector(`.point[data-index="${points.length}"]`);
+    if (lastPin) lastPin.remove();
+    points.pop();
+  }
+
+  function resetCanvas() {
+    points = [];
+    isConfirmed = false;
+    container.querySelectorAll('.point').forEach(p => p.remove());
+    document.getElementById('pVal').innerText = '0.0%';
+    document.getElementById('rssiA').innerText = `A: --`;
+    document.getElementById('rssiB').innerText = `B: --`;
+    document.getElementById('scan').disabled = false; 
+    document.getElementById('stop').disabled = true;
+    document.getElementById('guide').disabled = true; 
+    document.getElementById('guideStop').disabled = true;
+    document.getElementById('undoBtn').disabled = false; 
+    document.getElementById('resetBtn').disabled = false;
+  }
+
+  // --- BLEコアロジック ---
+  async function startScan() {
+    try {
+      const options = { 
+        filters: [{ services: [UUID_A] }, { services: [UUID_B] }], 
+        keepRepeatedDevices: true 
       };
       return await navigator.bluetooth.requestLEScan(options);
+    } catch (e) {
+      alert("BLEスキャンに失敗しました: " + e);
+    }
+  }
+
+  function calculateAverage(arr) {
+    if (arr.length === 0) return 0;
+    return arr.reduce((a, b) => a + b) / arr.length;
+  }
+
+  // 2つのビーコンのRSSIが揃った時に実行する共通ハンドラー
+  function handleAdvertisement(event, onPairReady) {
+    const uuid = event.uuids[1].toLowerCase();
+    const rssi = event.rssi;
+    if (!rssi || rssi >= 0) {
+      return;
     }
 
-  /*//サーバにデータを送信に変更
-    function saveData() {
-      if (averageArray.length > 0) {
-        fetch("https://172.20.10.2:3001/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: averageArray.map(Number) }),
-        })
-        .then(r => r.json())
-        .then(d => console.log("サーバー応答:", d))
-        .catch(e => console.error("送信エラー:", e));
-
-        alert('スキャン停止・データ保存・ルート保存が完了しました');
-      } else {
-        alert('スキャン停止・データ保存しました（ルートは空です）');
-      }
-    }*/
-
-    async function saveData() {
-      if (averageArray.length === 0) return;
-
-      try {
-        const res = await fetch("https://excepable-jazmine-counteractingly.ngrok-free.dev/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: averageArray.map(Number) }),
-        });
-        const data = await res.json();
-        console.log("サーバー応答:", data);
-        alert('スキャン停止・データ保存・ルート保存が完了しました');
-      } catch (err) {
-        console.error("送信エラー:", err);
-        alert('送信エラー: ' + err);
-      }
+    if (uuid === UUID_A) {
+      tempRSSI.a.push(rssi);
+      document.getElementById('rssiA').innerText = `A: ${rssi}`;
+    } else if (uuid === UUID_B) {
+      tempRSSI.b.push(rssi);
+      document.getElementById('rssiB').innerText = `B: ${rssi}`;
     }
 
-  
-    scanButton.addEventListener('click', async () => {
-      try {
-        scan = await startBluetoothScan();
-  
-        rssiArray = [];
-        averageArray = [];
+    // 両方のビーコンから一定数サンプルが取れたら処理
+    if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
+      const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples));
+      const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples));
+      tempRSSI.a = [];
+      tempRSSI.b = [];
+      onPairReady({ a: avgA, b: avgB });
+    }
+  }
 
-        advertisementHandler = createAdvertisementHandler(rssiArray, (avg) => {
-          averageArray.push(avg.toFixed(2));
+  // --- スキャン（記録モード） ---
+  document.getElementById('scan').onclick = async () => {
+    if (points.length < 2) return alert("ルートを2点以上指定してください");
+    scan = await startScan();
+    isConfirmed = true;
+    routeData = [];
+    tempRSSI = { a: [], b: [] };
+
+    advertisementHandler = (e) => {
+      handleAdvertisement(e, (avgs) => {
+        routeData.push(avgs);
+        console.log("Recorded Pair:", avgs);
+      });
+    };
+
+    navigator.bluetooth.addEventListener('advertisementreceived', advertisementHandler);
+    document.getElementById('scan').disabled = true; 
+    document.getElementById('stop').disabled = false;    
+    document.getElementById('undoBtn').disabled = true; 
+    document.getElementById('resetBtn').disabled = true;
+  };
+
+  document.getElementById('stop').onclick = async () => {
+    if (scan?.active) scan.stop();
+    navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
+
+    const fd = new FormData();
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput.files[0]) fd.append('image_file', fileInput.files[0]);
+    fd.append('points_data', JSON.stringify(points));
+    fd.append('route_data', JSON.stringify(routeData));
+
+    try {
+      const res = await fetch(`${BASE_URL}/upload`, { method: 'POST', body: fd });
+      if(res.ok) { alert("保存完了"); loadHistory(); }
+    } catch (e) { alert("保存エラー"); }
+    
+    document.getElementById('scan').disabled = false; 
+    document.getElementById('stop').disabled = true;
+    document.getElementById('undoBtn').disabled = false; 
+    document.getElementById('resetBtn').disabled = false;
+  };
+
+  // --- 案内モード ---
+  document.getElementById('guide').onclick = async () => {
+    if (routeData.length === 0) return alert("データがありません");
+    scan = await startScan();
+    tempRSSI = { a: [], b: [] };
+
+    advertisementHandler = (e) => {
+      handleAdvertisement(e, (currentAvgs) => {
+        // 最も近い記録地点を検索（ユークリッド距離）
+        let minDiff = Infinity;
+        let closestIdx = 0;
+
+        routeData.forEach((recorded, idx) => {
+          const diff = Math.sqrt(
+            Math.pow(currentAvgs.a - recorded.a, 2) + 
+            Math.pow(currentAvgs.b - recorded.b, 2)
+          );
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIdx = idx;
+          }
         });
-  
-        navigator.bluetooth.addEventListener('advertisementreceived', advertisementHandler);
 
-        scanButton.disabled = true;
-        stopButton.disabled = false;
-        viewButton.disabled = true;
-        guideButton.disabled = true;
-        guideStopButton.disabled = true;
-        deleteButton.disabled = true;
-  
-      } catch (err) {
-        alert('スキャンエラー: ' + err);
-      }
-    });
-  
-    stopButton.addEventListener('click', () => {
-      if (scan?.active) scan.stop();
-      if (advertisementHandler) {
-        navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
-      }
-  
-      saveData();
+        const percent = closestIdx / (routeData.length - 1);
 
-      scanButton.disabled = false;
-      stopButton.disabled = true;
-      viewButton.disabled = false;
-      guideButton.disabled = false;
-      guideStopButton.disabled = true;
-      deleteButton.disabled = false;
+        // let closestIndexA = 0;
+        // let minDiffA = Infinity;
+        // routeData.forEach((recorded, idx) => {
+        //     const diffA = Math.abs(currentAvgs.a - recorded.a);
+        //   if (diffA < minDiffA) {
+        //     minDiffA = diffA;
+        //     closestIndexA = idx;
+        //   }
+        // })
 
-    });
-  
-    viewButton.addEventListener('click', () => {
-      fetch("https://excepable-jazmine-counteractingly.ngrok-free.dev/data")
-        .then(r => r.json())
-        .then(data => {
-          console.log("取得データ:", data);
+        // let closestIndexB = 0;
+        // let minDiffB = Infinity;
+        // routeData.forEach((recorded, idx) => {
+        //     const diffB = Math.abs(currentAvgs.b - recorded.b);
+        //   if (diffB < minDiffB) {
+        //     minDiffB = diffB;
+        //     closestIndexB = idx;
+        //   }
+        // })
 
-          // 最後のデータを案内ルートとして使う
-          routeData = Array.isArray(data) ? { route: data[data.length - 1].value } : data;
-          document.getElementById("output").textContent = JSON.stringify(data, null, 2);
-        })
-        .catch(e => console.error("取得エラー:", e));
-  
-      if (!routeData) {
-        output.innerText = '保存されたRSSIデータはありません。';
-      }
-    });
-  
-    //サーバからデータを取得に変更
-    guideButton.addEventListener('click', async () => {
-      try{
-        fetch("https://excepable-jazmine-counteractingly.ngrok-free.dev/data")
-          .then(r => r.json())
-          .then(data => {
-            console.log("取得データ:", data);
+        // const midIndex = (closestIndexA + closestIndexB) / 2
 
-            // 最後のデータを案内ルートとして使う
-            routeData = Array.isArray(data) ? { route: data[data.length - 1].value } : data;
-            document.getElementById("output").textContent = JSON.stringify(data, null, 2);
-          })
-          .catch(e => console.error("取得エラー:", e));
+        // const percent = midIndex / (routeData.length - 1);
+        
+        document.getElementById('pVal').innerText = (percent * 100).toFixed(1) + '%';
+        updateMovingMarker(percent);
+      });
+    };
 
-        if (!routeData?.route?.length) {
-          alert('案内に使えるルートデータがありません');
-          return;
-        }
+    navigator.bluetooth.addEventListener('advertisementreceived', advertisementHandler);
 
-        const recent = rssiArray.slice(-maxSamples);
-        if (recent.length < maxSamples) {
-          alert('案内には少なくとも10件のRSSIデータが必要です');
-          return;
-        }
+    document.getElementById('guide').disabled = true; 
+    document.getElementById('guideStop').disabled = false;
+    document.getElementById('scan').disabled = true; 
+    document.getElementById('stop').disabled = true;    
+    document.getElementById('undoBtn').disabled = true; 
+    document.getElementById('resetBtn').disabled = true;
+  };
 
-        //RSSIスキャンを再開して現在位置を案内
-        scan = await startBluetoothScan();
-      
-        let guideArray = [];
+  document.getElementById('guideStop').onclick = () => {
+    if (scan?.active) scan.stop();
+    navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
 
-        advertisementHandler = createAdvertisementHandler(guideArray, (avg) => {
-          updateRouteGuide(avg, routeData);
-        });
-  
-        navigator.bluetooth.addEventListener('advertisementreceived', advertisementHandler);
+    document.getElementById('guide').disabled = false; 
+    document.getElementById('guideStop').disabled = true;
+    document.getElementById('scan').disabled = true; 
+    document.getElementById('stop').disabled = true;
+    document.getElementById('undoBtn').disabled = true; 
+    document.getElementById('resetBtn').disabled = false;
+  };
 
-        scanButton.disabled = true;
-        stopButton.disabled = true;
-        viewButton.disabled = true;
-        deleteButton.disabled = true;
-        guideButton.disabled = true;
-        guideStopButton.disabled = false;
+  // --- UI・履歴管理 ---
+  function updateMovingMarker(percent) {
+    let m = document.getElementById('mov');
+    if (!m) {
+      m = document.createElement('div');
+      m.id = 'mov'; m.className = 'point moving';
+      container.appendChild(m);
+    }
+    if (points.length < 2) return;
+    const segs = points.length - 1;
+    const i = Math.min(Math.floor(percent * segs), segs - 1);
+    const p = (percent * segs) - i;
+    const x = points[i].x + (points[i+1].x - points[i].x) * p;
+    const y = points[i].y + (points[i+1].y - points[i].y) * p;
+    m.style.left = x + '%'; m.style.top = y + '%';
+  }
 
-      } catch (err) {
-        alert('案内開始エラー: ' + err);
-      }
+  async function loadHistory() {
+    try {
+      const res = await fetch(`${BASE_URL}/list`);
+      const data = await res.json();
+      const list = document.getElementById('historyList');
+      list.innerHTML = "";
+      data.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'history-item';
+        row.innerHTML = `
+          <span>${item.name} (${item.points.length}点)</span>
+          <div>
+            <button class="btn-purple load-btn">読込</button>
+            <button class="btn-red del-btn">削除</button>
+          </div>`;
+        row.querySelector('.load-btn').onclick = () => {
+          resetCanvas();
+          img.onload = () => {
+            points = item.points;
+            points.forEach((p, i) => drawPointUI(p.x, p.y, i + 1));
+            routeData = item.route;
+            document.getElementById('guide').disabled = false;
+            img.onload = null;
+          };
+          img.src = item.imageUrl;
 
-    });
+          document.getElementById('scan').disabled = true; 
+          document.getElementById('stop').disabled = true;
+          document.getElementById('guide').disabled = false; 
+          document.getElementById('guideStop').disabled = true;
+          document.getElementById('undoBtn').disabled = true; 
+          document.getElementById('resetBtn').disabled = false;
+        };
+        row.querySelector('.del-btn').onclick = async () => {
+          if (confirm("削除しますか？")) {
+            await fetch(`${BASE_URL}/history/${item.id}`, { method: 'DELETE' });
+            loadHistory();
+          }
+        };
+        list.appendChild(row);
+      });
+    } catch (e) { console.error("履歴取得失敗"); }
+  }
 
-    guideStopButton.addEventListener('click', () => {
-      if (scan?.active) scan.stop();
-      if (advertisementHandler) {
-        navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
-      }
-
-      scanButton.disabled = false;
-      stopButton.disabled = false;
-      viewButton.disabled = false;
-      deleteButton.disabled = false;
-      guideButton.disabled = false;
-      guideStopButton.disabled = true;
-
-    });
-
-    //サーバのデータを削除に変更
-    deleteButton.addEventListener('click', () => {
-      //localStorage.clear();
-
-      fetch("https://excepable-jazmine-counteractingly.ngrok-free.dev/data", { method: "DELETE" })
-        .then(r => r.json())
-        .then(d => console.log("削除結果:", d))
-        .catch(e => console.error("削除エラー:", e));
-
-      scanButton.disabled = false;
-      stopButton.disabled = true;
-      viewButton.disabled = true;
-      deleteButton.disabled = true;
-      guideButton.disabled = true;
-      guideStopButton.disabled = true;
-
-      alert('サーバーデータを削除しました');
-    });
-
-  </script>  
+  function resetAll() { resetCanvas(); img.src = ""; document.getElementById('fileInput').value = ""; }
+  loadHistory();
+</script>
 </body>
 </html>
