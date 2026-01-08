@@ -56,9 +56,8 @@
 
 <script>
   const BASE_URL = "https://test-server-757e.onrender.com";
-  const maxSamples = 30; // 平均化するサンプル数
+  const maxSamples = 10; // 平均化するサンプル数
   
-  // ビーコンのUUID（環境に合わせて書き換えてください）
   const UUID_A = '12345678-1234-5678-1234-56789abcdef0'.toLowerCase();
   const UUID_B = '12345678-1234-5678-1234-56789abcdef1'.toLowerCase();
 
@@ -164,7 +163,6 @@
 
   // --- スキャン（記録モード） ---
   document.getElementById('scan').onclick = async () => {
-    if (points.length < 2) return alert("ルートを2点以上指定してください");
     scan = await startScan();
     isConfirmed = true;
     routeData = [];
@@ -188,16 +186,8 @@
     if (scan?.active) scan.stop();
     navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
 
-    const fd = new FormData();
-    const fileInput = document.getElementById('fileInput');
-    if (fileInput.files[0]) fd.append('image_file', fileInput.files[0]);
-    fd.append('points_data', JSON.stringify(points));
-    fd.append('route_data', JSON.stringify(routeData));
-
-    try {
-      const res = await fetch(`${BASE_URL}/upload`, { method: 'POST', body: fd });
-      if(res.ok) { alert("保存完了"); loadHistory(); }
-    } catch (e) { alert("保存エラー"); }
+    document.getElementById('rssiA').innerText = `${tempRSSI.a}`;
+    document.getElementById('rssiB').innerText = `${tempRSSI.b}`;
     
     document.getElementById('scan').disabled = false; 
     document.getElementById('stop').disabled = true;
@@ -210,6 +200,7 @@
     if (routeData.length === 0) return alert("データがありません");
     scan = await startScan();
     tempRSSI = { a: [], b: [] };
+    isConfirmed = true
 
     advertisementHandler = (e) => {
       handleAdvertisement(e, (currentAvgs) => {
@@ -315,6 +306,7 @@
           </div>`;
         row.querySelector('.load-btn').onclick = () => {
           resetCanvas();
+          isConfirmed = true
           img.onload = () => {
             points = item.points;
             points.forEach((p, i) => drawPointUI(p.x, p.y, i + 1));
