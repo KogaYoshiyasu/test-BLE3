@@ -149,16 +149,18 @@
 
     if (uuid === UUID_A) {
       tempRSSI.a.push(rssi);
-      document.getElementById('rssiA').innerText = `A: ${rssi}`;
+      //document.getElementById('rssiA').innerText = `A: ${rssi}`;
     } else if (uuid === UUID_B) {
       tempRSSI.b.push(rssi);
-      document.getElementById('rssiB').innerText = `B: ${rssi}`;
+      //document.getElementById('rssiB').innerText = `B: ${rssi}`;
     }
 
     // 両方のビーコンから一定数サンプルが取れたら処理
     if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
       const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples));
       const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples));
+      document.getElementById('rssiA').innerText = `A: ${avgA}`;
+      document.getElementById('rssiB').innerText = `B: ${avgB}`;
       onPairReady({ a: avgA, b: avgB });
     }
   }
