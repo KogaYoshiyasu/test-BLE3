@@ -38,7 +38,7 @@
     </div>
     <div class="row">
       <strong>進行度:</strong>
-      <span id="pVal" style="font-weight:bold; min-width:50px;">0.0%</span>    
+      <span id="pVal" style="font-weight:bold; min-width:50px;">0.0%</span>
       <span id="rssiA" class="rssi-display">A: --</span>
       <span id="rssiB" class="rssi-display">B: --</span>
     </div>
@@ -145,16 +145,16 @@
 
     if (uuid === UUID_A) {
       tempRSSI.a.push(rssi);
-      //document.getElementById('rssiA').innerText = `A: ${rssi}`;
+      // document.getElementById('rssiA').innerText = `A: ${rssi}`;
     } else if (uuid === UUID_B) {
       tempRSSI.b.push(rssi);
-      //document.getElementById('rssiB').innerText = `B: ${rssi}`;
+      // document.getElementById('rssiB').innerText = `B: ${rssi}`;
     }
 
     // 両方のビーコンから一定数サンプルが取れたら処理
     if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
-      const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples));
-      const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples));
+      const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples)).toFixed(1);
+      const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples)).toFixed(1);
       document.getElementById('rssiA').innerText = `A: ${avgA}`;
       document.getElementById('rssiB').innerText = `B: ${avgB}`;
       onPairReady({ a: avgA, b: avgB });
@@ -163,6 +163,7 @@
 
   // --- スキャン（記録モード） ---
   document.getElementById('scan').onclick = async () => {
+    if (points.length < 2) return alert("ルートを2点以上指定してください");
     scan = await startScan();
     isConfirmed = true;
     routeData = [];
@@ -186,8 +187,16 @@
     if (scan?.active) scan.stop();
     navigator.bluetooth.removeEventListener('advertisementreceived', advertisementHandler);
 
-    document.getElementById('rssiA').innerText = `${tempRSSI.a}`;
-    document.getElementById('rssiB').innerText = `${tempRSSI.b}`;
+    const fd = new FormData();
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput.files[0]) fd.append('image_file', fileInput.files[0]);
+    fd.append('points_data', JSON.stringify(points));
+    fd.append('route_data', JSON.stringify(routeData));
+
+    try {
+      const res = await fetch(`${BASE_URL}/upload`, { method: 'POST', body: fd });
+      if(res.ok) { alert("保存完了"); loadHistory(); }
+    } catch (e) { alert("保存エラー"); }
     
     document.getElementById('scan').disabled = false; 
     document.getElementById('stop').disabled = true;
@@ -339,3 +348,4 @@
 </script>
 </body>
 </html>
+
