@@ -56,7 +56,7 @@
 
 <script>
   const BASE_URL = "https://test-server-757e.onrender.com";
-  const maxSamples = 30; // 平均化するサンプル数
+  const maxSamples = 10; // 平均化するサンプル数
   const updateInterval = 10;// 何個新しいデータが溜まったら更新するか
   const weight = 0.1;
   
@@ -70,7 +70,8 @@
   let isConfirmed = false;
   let flagA = false;
   let flagB = false;
-  let lastRssi = 0;
+  let lastRssiA = 0;
+  let lastRssiB = 0;
 
   const container = document.getElementById('container');
   const img = document.getElementById('img');
@@ -112,7 +113,8 @@
     isConfirmed = false;
     flagA = false;
     flagB = false;
-    lastRssi = 0;
+    lastRssiA = 0;
+    lastRssiB = 0;
     container.querySelectorAll('.point').forEach(p => p.remove());
     document.getElementById('pVal').innerText = '0.0%';
     document.getElementById('rssiA').innerText = `A: --`;
@@ -150,18 +152,23 @@
     if (!rssi || rssi >= 30 || rssi < -100) {
       return;
     }
-
-    if(Math.abs(lastRssi - rssi) > 10 && lastRssi !== 0){
+    
+    if (uuid === UUID_A) {
+      if(Math.abs(lastRssiA - rssi) > 10 && lastRssiA !== 0){
         document.getElementById('rssiA').innerText = `できてない`;
         document.getElementById('rssiB').innerText = `${lastRssi}`;
         return;
-    }
-
-    lastRssi = rssi;
-    if (uuid === UUID_A) {
+      }
       tempRSSI.a.push(rssi);
+      lastRssiA = rssi;
     } else if (uuid === UUID_B) {
+      if(Math.abs(lastRssiB - rssi) > 10 && lastRssiB !== 0){
+        document.getElementById('rssiA').innerText = `できてない`;
+        document.getElementById('rssiB').innerText = `${lastRssi}`;
+        return;
+      }
       tempRSSI.b.push(rssi);
+      lastRssiB = rssi;
     }
 
     // 両方のビーコンから一定数サンプルが取れたら処理
