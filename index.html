@@ -150,7 +150,7 @@
   function handleAdvertisement(event, onPairReady) {
     const uuid = event.uuids[1].toLowerCase();
     const rssi = event.rssi;
-    if (!rssi || rssi >= 30 || rssi < -100) {
+    if (!rssi || rssi >= 0) {
       return;
     }
     
@@ -164,8 +164,8 @@
       if(Math.abs(lastRssiB - rssi) > range && lastRssiB !== 0){
         return;
       }
-      tempRSSI.b.push(rssi);
       lastRssiB = rssi;
+      tempRSSI.b.push(rssi);
     }
 
     // 両方のビーコンから一定数サンプルが取れたら処理
@@ -179,35 +179,43 @@
       onPairReady({ a: avgA, b: avgB });
     }
 
-    // if (uuid === UUID_A) {
-    //   if (tempRSSI.a.length < maxSamples || flagA){
-    //     tempRSSI.a.push(rssi);
-    //     if (tempRSSI.a.length > (maxSamples + updateInterval - 1)) {
-    //       tempRSSI.a.splice(0, updateInterval);
-    //       flagA = false;
-    //     }
-    //   }
-    // } else if (uuid === UUID_B) {
-    //   if (tempRSSI.b.length < maxSamples || flagB){
-    //     tempRSSI.b.push(rssi);
-    //     if (tempRSSI.b.length > (maxSamples + updateInterval - 1)) {
-    //       tempRSSI.b.splice(0, updateInterval);
-    //       flagB = false;
-    //     }
-    //   }
-    // }
+    if (uuid === UUID_A) {
+        if(Math.abs(lastRssiA - rssi) > range && lastRssiA !== 0){
+            return;
+        }
+        lastRssiA = rssi;
+        if (tempRSSI.a.length < maxSamples || flagA){
+            tempRSSI.a.push(rssi);
+            if (tempRSSI.a.length > (maxSamples + updateInterval - 1)) {
+            tempRSSI.a.splice(0, updateInterval);
+            flagA = false;
+            }
+        }
+    } else if (uuid === UUID_B) {
+        if(Math.abs(lastRssiB - rssi) > range && lastRssiB !== 0){
+            return;
+        }
+        lastRssiB = rssi;
+        if (tempRSSI.b.length < maxSamples || flagB){
+            tempRSSI.b.push(rssi);
+            if (tempRSSI.b.length > (maxSamples + updateInterval - 1)) {
+            tempRSSI.b.splice(0, updateInterval);
+            flagB = false;
+            }
+        }
+    }
 
-    // if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
-    //   if (tempRSSI.a.length % updateInterval === 0 && tempRSSI.b.length % updateInterval === 0) {
-    //     flagA = true;
-    //     flagB = true;
-    //     const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples)).toFixed(1);
-    //     const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples)).toFixed(1);
-    //     document.getElementById('rssiA').innerText = `A: ${avgA}`;
-    //     document.getElementById('rssiB').innerText = `B: ${avgB}`;
-    //     onPairReady({ a: avgA, b: avgB });
-    //   }
-    // }
+    if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
+      if (tempRSSI.a.length % updateInterval === 0 && tempRSSI.b.length % updateInterval === 0) {
+        flagA = true;
+        flagB = true;
+        const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples)).toFixed(1);
+        const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples)).toFixed(1);
+        document.getElementById('rssiA').innerText = `A: ${avgA}`;
+        document.getElementById('rssiB').innerText = `B: ${avgB}`;
+        onPairReady({ a: avgA, b: avgB });
+      }
+    }
   }
 
   // --- スキャン（記録モード） ---
