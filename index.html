@@ -59,6 +59,7 @@
   const maxSamples = 10; // 平均化するサンプル数
   const updateInterval = 10;// 何個新しいデータが溜まったら更新するか
   const weight = 0.1;
+  const range = 5;
   
   const UUID_A = '12345678-1234-5678-1234-56789abcdef0'.toLowerCase();
   const UUID_B = '12345678-1234-5678-1234-56789abcdef1'.toLowerCase();
@@ -154,13 +155,13 @@
     }
     
     if (uuid === UUID_A) {
-      if(Math.abs(lastRssiA - rssi) > 10 && lastRssiA !== 0){
+      if(Math.abs(lastRssiA - rssi) > range && lastRssiA !== 0){
         return;
       }
       tempRSSI.a.push(rssi);
       lastRssiA = rssi;
     } else if (uuid === UUID_B) {
-      if(Math.abs(lastRssiB - rssi) > 10 && lastRssiB !== 0){
+      if(Math.abs(lastRssiB - rssi) > range && lastRssiB !== 0){
         return;
       }
       tempRSSI.b.push(rssi);
