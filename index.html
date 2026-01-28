@@ -152,6 +152,8 @@
     }
 
     if(Math.abs(lastRssi - rssi) > 10 && lastRssi !== 0){
+        document.getElementById('rssiA').innerText = `できてない`;
+        document.getElementById('rssiB').innerText = `${lastRssi}`;
         return;
     }
 
