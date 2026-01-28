@@ -154,30 +154,30 @@
       return;
     }
     
-    if (uuid === UUID_A) {
-      if(Math.abs(lastRssiA - rssi) > range && lastRssiA !== 0){
-        return;
-      }
-      tempRSSI.a.push(rssi);
-      lastRssiA = rssi;
-    } else if (uuid === UUID_B) {
-      if(Math.abs(lastRssiB - rssi) > range && lastRssiB !== 0){
-        return;
-      }
-      lastRssiB = rssi;
-      tempRSSI.b.push(rssi);
-    }
+    // if (uuid === UUID_A) {
+    //   if(Math.abs(lastRssiA - rssi) > range && lastRssiA !== 0){
+    //     return;
+    //   }
+    //   tempRSSI.a.push(rssi);
+    //   lastRssiA = rssi;
+    // } else if (uuid === UUID_B) {
+    //   if(Math.abs(lastRssiB - rssi) > range && lastRssiB !== 0){
+    //     return;
+    //   }
+    //   lastRssiB = rssi;
+    //   tempRSSI.b.push(rssi);
+    // }
 
-    // 両方のビーコンから一定数サンプルが取れたら処理
-    if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
-      const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples));
-      const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples));
-      document.getElementById('rssiA').innerText = `A: ${avgA}`;
-      document.getElementById('rssiB').innerText = `B: ${avgB}`;
-      tempRSSI.a = [];
-      tempRSSI.b = [];
-      onPairReady({ a: avgA, b: avgB });
-    }
+    // // 両方のビーコンから一定数サンプルが取れたら処理
+    // if (tempRSSI.a.length >= maxSamples && tempRSSI.b.length >= maxSamples) {
+    //   const avgA = calculateAverage(tempRSSI.a.slice(-maxSamples));
+    //   const avgB = calculateAverage(tempRSSI.b.slice(-maxSamples));
+    //   document.getElementById('rssiA').innerText = `A: ${avgA}`;
+    //   document.getElementById('rssiB').innerText = `B: ${avgB}`;
+    //   tempRSSI.a = [];
+    //   tempRSSI.b = [];
+    //   onPairReady({ a: avgA, b: avgB });
+    // }
 
     if (uuid === UUID_A) {
         if(Math.abs(lastRssiA - rssi) > range && lastRssiA !== 0){
