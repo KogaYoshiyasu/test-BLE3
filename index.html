@@ -155,16 +155,12 @@
     
     if (uuid === UUID_A) {
       if(Math.abs(lastRssiA - rssi) > 10 && lastRssiA !== 0){
-        document.getElementById('rssiA').innerText = `できてない`;
-        document.getElementById('rssiB').innerText = `${lastRssi}`;
         return;
       }
       tempRSSI.a.push(rssi);
       lastRssiA = rssi;
     } else if (uuid === UUID_B) {
       if(Math.abs(lastRssiB - rssi) > 10 && lastRssiB !== 0){
-        document.getElementById('rssiA').innerText = `できてない`;
-        document.getElementById('rssiB').innerText = `${lastRssi}`;
         return;
       }
       tempRSSI.b.push(rssi);
