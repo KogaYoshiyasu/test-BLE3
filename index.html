@@ -151,7 +151,7 @@
       return;
     }
 
-    if(Math.abs(lastRssi - rssi) > 10){
+    if(Math.abs(lastRssi - rssi) > 10 && lastRssi !== 0){
         return;
     }
 
